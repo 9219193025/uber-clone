@@ -1,29 +1,46 @@
 {
   "expo": {
-    "name": "uber-clone",
+    "name": "UberClone",
     "slug": "uber-clone",
     "version": "1.0.0",
     "orientation": "portrait",
+    "scheme": "uberclone",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
-    "newArchEnabled": true,
     "splash": {
-      "image": "./assets/splash-icon.png",
+      "image": "./assets/splash.png",
       "resizeMode": "contain",
       "backgroundColor": "#ffffff"
     },
-    "ios": {
-      "supportsTablet": true
-    },
+    "assetBundlePatterns": [
+      "**/*"
+    ],
     "android": {
+      "package": "com.kartikeytiwari.uberclone",
+      "permissions": [
+        "ACCESS_FINE_LOCATION",
+        "ACCESS_COARSE_LOCATION",
+        "INTERNET",
+        "android.permission.ACCESS_COARSE_LOCATION",
+        "android.permission.ACCESS_FINE_LOCATION"
+      ],
       "adaptiveIcon": {
-        "foregroundImage": "./assets/adaptive-icon.png",
+        "foregroundImage": "./assets/icon.png",
         "backgroundColor": "#ffffff"
-      },
-      "edgeToEdgeEnabled": true
+      }
     },
-    "web": {
-      "favicon": "./assets/favicon.png"
+    "plugins": [
+      [
+        "expo-location",
+        {
+          "locationAlwaysAndWhenInUsePermission": "Allow UberClone to access your location."
+        }
+      ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "b8c99f13-86fa-4f72-8384-69099c8ad293"
+      }
     }
   }
 }
