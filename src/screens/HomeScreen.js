@@ -1,11 +1,8 @@
-import { View, Text, StyleSheet, Pressable, Image } from 'react-native';
+import { View, Text, StyleSheet, Pressable } from 'react-native';
 import MapView, { Marker, Polyline } from 'react-native-maps';
 import * as Location from 'expo-location';
 import { useEffect, useRef, useState } from 'react';
 import { useNavigation, useRoute } from '@react-navigation/native';
-
-import pickupIcon from '../../assets/pickup.png';
-import dropIcon from '../../assets/drop.png';
 
 export default function HomeScreen() {
   const navigation = useNavigation();
@@ -18,7 +15,6 @@ export default function HomeScreen() {
   const [routeCoords, setRouteCoords] = useState([]);
   const [rideInfo, setRideInfo] = useState(null);
 
-  // 🚗 Ride types
   const rideTypes = [
     { id: 'mini', name: 'Mini', base: 30, rate: 10 },
     { id: 'sedan', name: 'Sedan', base: 40, rate: 14 },
@@ -26,43 +22,38 @@ export default function HomeScreen() {
   ];
   const [selectedRide, setSelectedRide] = useState(rideTypes[0]);
 
-  // 📍 Live location tracking
+  // SAFE LOCATION HANDLING
+ useEffect(() => {
+  const getLocation=async () => {
+    try {
+      const { status } =
+        await Location.requestForegroundPermissionsAsync();
+
+    if(status!==granted) {
+      console.log("Permission denied");
+      return;
+    }
+    
+
+      const loc = await Location.getCurrentPositionAsync({
+        accuracy: Location.Accuracy.Balanced,
+      });
+
+      if (loc?.coords?.latitude && loc?.coords?.longitude) {
+        setLocation(loc.coords);
+      }
+    } catch (error) {
+      console.log('Location error:', error);
+    }
+  };
+
+  getLocation();
+}, []);
+
+   
+  // SAFE ROUTE FETCH
   useEffect(() => {
-    let subscriber;
-
-    const startWatching = async () => {
-      let { status } = await Location.requestForegroundPermissionsAsync();
-      if (status !== 'granted') return;
-
-      subscriber = await Location.watchPositionAsync(
-        {
-          accuracy: Location.Accuracy.High,
-          timeInterval: 2000,
-          distanceInterval: 1,
-        },
-        (newLocation) => {
-          const coords = newLocation.coords;
-          setLocation(coords);
-
-          if (mapRef.current) {
-            mapRef.current.animateToRegion({
-              latitude: coords.latitude,
-              longitude: coords.longitude,
-              latitudeDelta: 0.01,
-              longitudeDelta: 0.01,
-            });
-          }
-        }
-      );
-    };
-
-    startWatching();
-    return () => subscriber && subscriber.remove();
-  }, []);
-
-  // 🛣️ Fetch route when destination selected
-  useEffect(() => {
-    if (!destination?.latitude || !location) return;
+    if (!destination?.latitude || !location?.latitude) return;
 
     const fetchRoute = async () => {
       try {
@@ -75,16 +66,30 @@ export default function HomeScreen() {
 
         const data = await res.json();
 
-        const coords = data.routes[0].geometry.coordinates.map(
-          ([lng, lat]) => ({
-            latitude: lat,
-            longitude: lng,
-          })
-        );
+        if (!data?.routes || data.routes.length === 0) {
+          console.log('No route found');
+          return;
+        }
+
+        const route = data.routes[0];
+
+        if (!route?.geometry?.coordinates) return;
+
+        const coords = route.geometry.coordinates.map(([lng, lat]) => ({
+          latitude: lat,
+          longitude: lng,
+        }));
 
         setRouteCoords(coords);
 
-        // Auto zoom to show both points
+        const distanceKm = route.distance / 1000;
+        const timeMin = Math.ceil(route.duration / 60);
+
+        setRideInfo({
+          distance: distanceKm.toFixed(2),
+          time: timeMin,
+        });
+
         if (mapRef.current) {
           mapRef.current.fitToCoordinates(
             [
@@ -98,21 +103,18 @@ export default function HomeScreen() {
               },
             ],
             {
-              edgePadding: { top: 100, right: 50, bottom: 300, left: 50 },
+              edgePadding: {
+                top: 100,
+                right: 50,
+                bottom: 250,
+                left: 50,
+              },
               animated: true,
             }
           );
         }
-
-        const distanceKm = data.routes[0].distance / 1000;
-        const timeMin = Math.ceil(data.routes[0].duration / 60);
-
-        setRideInfo({
-          distance: distanceKm.toFixed(2),
-          time: timeMin,
-        });
-      } catch (e) {
-        console.log('Route error', e);
+      } catch (error) {
+        console.log('Route error:', error);
       }
     };
 
@@ -120,17 +122,18 @@ export default function HomeScreen() {
   }, [destination, location]);
 
   const calculateFare = () => {
-    if (!rideInfo) return 0;
+    if (!rideInfo?.distance) return 0;
     return (
       selectedRide.base +
       rideInfo.distance * selectedRide.rate
     ).toFixed(0);
   };
 
-  if (!location) {
+  // PREVENT MAP RENDER BEFORE LOCATION
+  if (!location?.latitude) {
     return (
       <View style={styles.center}>
-        <Text>Fetching Live Location...</Text>
+        <Text>Fetching Location...</Text>
       </View>
     );
   }
@@ -147,24 +150,19 @@ export default function HomeScreen() {
           longitudeDelta: 0.01,
         }}
       >
-        {/* Pickup */}
-        <Marker coordinate={location}>
-          <Image source={pickupIcon} style={{ width: 35, height: 35 }} />
-        </Marker>
+        <Marker coordinate={location} title="You are here" />
 
-        {/* Drop */}
         {destination?.latitude && (
           <Marker
             coordinate={{
               latitude: destination.latitude,
               longitude: destination.longitude,
             }}
-          >
-            <Image source={dropIcon} style={{ width: 35, height: 35 }} />
-          </Marker>
+            pinColor="green"
+            title={destination.name}
+          />
         )}
 
-        {/* Route */}
         {routeCoords.length > 0 && (
           <Polyline
             coordinates={routeCoords}
@@ -174,25 +172,24 @@ export default function HomeScreen() {
         )}
       </MapView>
 
-      {/* Bottom Panel */}
-      <View style={styles.bottomPanel}>
+      <View style={styles.panel}>
         <Pressable onPress={() => navigation.navigate('Search')}>
           <Text style={styles.title}>Where to?</Text>
         </Pressable>
 
         {rideInfo && (
           <>
-            <Text style={styles.info}>
+            <Text>
               Distance: {rideInfo.distance} km | Time: {rideInfo.time} min
             </Text>
 
-            <View style={styles.rideRow}>
+            <View style={styles.row}>
               {rideTypes.map((ride) => (
                 <Pressable
                   key={ride.id}
                   style={[
-                    styles.rideOption,
-                    selectedRide.id === ride.id && styles.selectedRide,
+                    styles.rideBtn,
+                    selectedRide.id === ride.id && styles.selected,
                   ]}
                   onPress={() => setSelectedRide(ride)}
                 >
@@ -204,18 +201,19 @@ export default function HomeScreen() {
             <Text style={styles.fare}>Fare: ₹{calculateFare()}</Text>
 
             <Pressable
-              style={styles.confirmBtn}
+              style={styles.confirm}
               onPress={() =>
                 navigation.navigate('Ride', {
+                  pickup: location,
                   ride: selectedRide,
                   fare: calculateFare(),
                   distance: rideInfo.distance,
                   time: rideInfo.time,
-                  pickup: location,
+                  routeCoords: routeCoords
                 })
               }
             >
-              <Text style={{ color: 'white', fontWeight: 'bold' }}>
+              <Text style={{ color: 'white' }}>
                 Confirm {selectedRide.name}
               </Text>
             </Pressable>
@@ -228,46 +226,30 @@ export default function HomeScreen() {
 
 const styles = StyleSheet.create({
   center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-
-  bottomPanel: {
+  panel: {
     position: 'absolute',
     bottom: 40,
     left: 15,
     right: 15,
     backgroundColor: 'white',
-    borderRadius: 20,
     padding: 20,
-    elevation: 10,
+    borderRadius: 15,
   },
-
-  title: { fontSize: 22, fontWeight: 'bold' },
-  info: { marginTop: 6, color: 'gray' },
-  fare: { marginTop: 10, fontSize: 18, fontWeight: 'bold' },
-
-  rideRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginTop: 10,
-  },
-
-  rideOption: {
+  title: { fontSize: 20, fontWeight: 'bold' },
+  row: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 10 },
+  rideBtn: {
     padding: 10,
     borderWidth: 1,
-    borderColor: '#ddd',
     borderRadius: 8,
     width: '30%',
     alignItems: 'center',
   },
-
-  selectedRide: {
-    backgroundColor: '#d0ebff',
-    borderColor: 'blue',
-  },
-
-  confirmBtn: {
+  selected: { backgroundColor: '#d0ebff' },
+  fare: { marginTop: 10, fontWeight: 'bold' },
+  confirm: {
     marginTop: 12,
     backgroundColor: 'black',
-    padding: 14,
+    padding: 12,
     borderRadius: 8,
     alignItems: 'center',
   },
